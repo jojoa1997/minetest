@@ -1321,7 +1321,7 @@ void the_game(
 	*/
 
 	Sky *sky = NULL;
-	sky = new Sky(smgr->getRootSceneNode(), smgr, -1);
+	sky = new Sky(smgr->getRootSceneNode(), smgr, -1, client.getEnv().getLocalPlayer());
 	
 	/*
 		FarMesh

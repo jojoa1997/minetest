@@ -8,16 +8,18 @@
 #include "main.h" // g_profiler
 #include "profiler.h"
 #include "util/numeric.h" // MYMIN
+#include <cmath>
 
 //! constructor
-Sky::Sky(scene::ISceneNode* parent, scene::ISceneManager* mgr, s32 id):
+Sky::Sky(scene::ISceneNode* parent, scene::ISceneManager* mgr, s32 id, LocalPlayer* player):
 		scene::ISceneNode(parent, mgr, id),
 		m_first_update(true),
 		m_brightness(0.5),
 		m_cloud_brightness(0.5),
 		m_bgcolor_bright_f(1,1,1,1),
 		m_skycolor_bright_f(1,1,1,1),
-		m_cloudcolor_bright_f(1,1,1,1)
+		m_cloudcolor_bright_f(1,1,1,1),
+		m_player(player)
 {
 	setAutomaticCulling(scene::EAC_OFF);
 	Box.MaxEdge.set(0,0,0);
@@ -124,6 +126,40 @@ void Sky::render()
 		video::SColor suncolor2 = suncolor2_f.toSColor();
 		video::SColor mooncolor = mooncolor_f.toSColor();
 		video::SColor mooncolor2 = mooncolor2_f.toSColor();
+
+		// Apply horizon coloring based on sun and moon direction during sunset and sunrise
+		if (m_horizon_blend() != 0)
+		{
+			// calculate hemisphere values from pitch and yaw
+			f32 angle_pitch = std::abs(m_player->getPitch());
+			f32 angle_yaw = wrapDegrees_0_360(m_player->getYaw() + 90);
+			if (angle_yaw > 180)
+				angle_yaw = 360 - angle_yaw;
+			// direction of color blend based on where the sun & moon are rising
+			f32 skycolor_blend = angle_yaw / 180;
+			if (m_time_of_day < 0.5)
+				skycolor_blend = 1 - skycolor_blend;
+
+			// horizon colors of sun and moon
+			f32 skycolor_light = rangelim(m_time_brightness * 3, 0.2, 1);
+			video::SColorf suncolor3_f(1, 1, 1, 1);
+			suncolor3_f.r = skycolor_light * 1;
+			suncolor3_f.b = skycolor_light * (0.25 + (rangelim(m_time_brightness, 0.25, 0.75) - 0.25) * 2 * 0.75);
+			suncolor3_f.g = skycolor_light * (suncolor3_f.b * 0.375 + (rangelim(m_time_brightness, 0.05, 0.15) - 0.05) * 10 * 0.625);
+			video::SColorf mooncolor3_f(0.55 * skycolor_light, 0.65 * skycolor_light, 0.75 * skycolor_light, 1);
+			video::SColor suncolor3 = suncolor3_f.toSColor();
+			video::SColor mooncolor3 = mooncolor3_f.toSColor();
+			// calculate the blend color
+			video::SColor skycolor = video::SColor(0, 0, 0, m_bgcolor.getAlpha());
+			skycolor.setRed(mooncolor3.getRed() * (1 - skycolor_blend) + suncolor3.getRed() * skycolor_blend);
+			skycolor.setGreen(mooncolor3.getGreen() * (1 - skycolor_blend) + suncolor3.getGreen() * skycolor_blend);
+			skycolor.setBlue(mooncolor3.getBlue() * (1 - skycolor_blend) + suncolor3.getBlue() * skycolor_blend);
+			// combine horizon color with the blend color
+			f32 skycolor_mix = 0.5 * m_horizon_blend() * (1 - angle_pitch / 90);
+			m_bgcolor.setRed(m_bgcolor.getRed() * (1 - skycolor_mix ) + skycolor.getRed() * skycolor_mix );
+			m_bgcolor.setGreen(m_bgcolor.getGreen() * (1 - skycolor_mix ) + skycolor.getGreen() * skycolor_mix );
+			m_bgcolor.setBlue(m_bgcolor.getBlue() * (1 - skycolor_mix ) + skycolor.getBlue() * skycolor_mix );
+		}
 
 		const f32 t = 1.0f;
 		const f32 o = 0.0f;
