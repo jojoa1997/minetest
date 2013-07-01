@@ -109,7 +109,7 @@ void Sky::render()
 		float moonsize = 0.04;
 		video::SColorf mooncolor_f(0.50, 0.57, 0.65, 1);
 		video::SColorf mooncolor2_f(0.85, 0.875, 0.9, 1);
-		
+
 		float nightlength = 0.415;
 		float wn = nightlength / 2;
 		float wicked_time_of_day = 0;
@@ -126,40 +126,6 @@ void Sky::render()
 		video::SColor suncolor2 = suncolor2_f.toSColor();
 		video::SColor mooncolor = mooncolor_f.toSColor();
 		video::SColor mooncolor2 = mooncolor2_f.toSColor();
-
-		// Apply horizon coloring based on sun and moon direction during sunset and sunrise
-		if (m_horizon_blend() != 0)
-		{
-			// calculate hemisphere values from pitch and yaw
-			f32 angle_pitch = std::abs(m_player->getPitch());
-			f32 angle_yaw = wrapDegrees_0_360(m_player->getYaw() + 90);
-			if (angle_yaw > 180)
-				angle_yaw = 360 - angle_yaw;
-			// direction of color blend based on where the sun & moon are rising
-			f32 skycolor_blend = angle_yaw / 180;
-			if (m_time_of_day < 0.5)
-				skycolor_blend = 1 - skycolor_blend;
-
-			// horizon colors of sun and moon
-			f32 skycolor_light = rangelim(m_time_brightness * 3, 0.2, 1);
-			video::SColorf suncolor3_f(1, 1, 1, 1);
-			suncolor3_f.r = skycolor_light * 1;
-			suncolor3_f.b = skycolor_light * (0.25 + (rangelim(m_time_brightness, 0.25, 0.75) - 0.25) * 2 * 0.75);
-			suncolor3_f.g = skycolor_light * (suncolor3_f.b * 0.375 + (rangelim(m_time_brightness, 0.05, 0.15) - 0.05) * 10 * 0.625);
-			video::SColorf mooncolor3_f(0.55 * skycolor_light, 0.65 * skycolor_light, 0.75 * skycolor_light, 1);
-			video::SColor suncolor3 = suncolor3_f.toSColor();
-			video::SColor mooncolor3 = mooncolor3_f.toSColor();
-			// calculate the blend color
-			video::SColor skycolor = video::SColor(0, 0, 0, m_bgcolor.getAlpha());
-			skycolor.setRed(mooncolor3.getRed() * (1 - skycolor_blend) + suncolor3.getRed() * skycolor_blend);
-			skycolor.setGreen(mooncolor3.getGreen() * (1 - skycolor_blend) + suncolor3.getGreen() * skycolor_blend);
-			skycolor.setBlue(mooncolor3.getBlue() * (1 - skycolor_blend) + suncolor3.getBlue() * skycolor_blend);
-			// combine horizon color with the blend color
-			f32 skycolor_mix = 0.5 * m_horizon_blend() * (1 - angle_pitch / 90);
-			m_bgcolor.setRed(m_bgcolor.getRed() * (1 - skycolor_mix ) + skycolor.getRed() * skycolor_mix );
-			m_bgcolor.setGreen(m_bgcolor.getGreen() * (1 - skycolor_mix ) + skycolor.getGreen() * skycolor_mix );
-			m_bgcolor.setBlue(m_bgcolor.getBlue() * (1 - skycolor_mix ) + skycolor.getBlue() * skycolor_mix );
-		}
 
 		const f32 t = 1.0f;
 		const f32 o = 0.0f;
@@ -422,6 +388,7 @@ void Sky::render()
 			}
 			driver->drawIndexedTriangleFan(&vertices[0], 4, indices, 2);
 		}
+
 	}
 }
 
@@ -462,12 +429,13 @@ void Sky::update(float time_of_day, float time_brightness,
 			video::SColor(255, 140, 186, 250);
 	video::SColorf skycolor_bright_dawn_f =
 			video::SColor(255, 180, 186, 250);
-	
+
 	video::SColorf cloudcolor_bright_normal_f =
 			video::SColor(255, 240,240,255);
 	//video::SColorf cloudcolor_bright_dawn_f(1.0, 0.591, 0.4);
 	//video::SColorf cloudcolor_bright_dawn_f(1.0, 0.65, 0.44);
-	video::SColorf cloudcolor_bright_dawn_f(1.0, 0.7, 0.5);
+	//video::SColorf cloudcolor_bright_dawn_f(1.0, 0.7, 0.5);
+	video::SColorf cloudcolor_bright_dawn_f(1.0, 0.875, 0.75);
 
 	if(sunlight_seen){
 		//m_brightness = m_brightness * 0.95 + direct_brightness * 0.05;
@@ -501,40 +469,69 @@ void Sky::update(float time_of_day, float time_brightness,
 	} else {
 		m_bgcolor_bright_f = m_bgcolor_bright_f.getInterpolated(
 				bgcolor_bright_indoor_f, color_change_fraction);
-		m_cloudcolor_bright_f = m_cloudcolor_bright_f.getInterpolated(
-				cloudcolor_bright_normal_f, color_change_fraction);
 		m_skycolor_bright_f = m_skycolor_bright_f.getInterpolated(
 				bgcolor_bright_indoor_f, color_change_fraction);
+		m_cloudcolor_bright_f = m_cloudcolor_bright_f.getInterpolated(
+				cloudcolor_bright_normal_f, color_change_fraction);
 		m_clouds_visible = false;
 	}
+
+	// Horizon coloring based on sun and moon direction during sunset and sunrise
+	video::SColor pointcolor = video::SColor(1, 1, 1, m_bgcolor.getAlpha());
+	if (sunlight_seen && m_horizon_blend() != 0)
+	{
+		// calculate hemisphere value from yaw
+		f32 pointcolor_blend = wrapDegrees_0_360(m_player->getYaw() + 90);
+		if (pointcolor_blend > 180)
+			pointcolor_blend = 360 - pointcolor_blend;
+		pointcolor_blend /= 180;
+		// bound view angle to determine where transition starts and ends
+		pointcolor_blend = rangelim(1 - pointcolor_blend * 1.375, 0, 1 / 1.375) * 1.375;
+		// invert direction to match where the sun and moon are rising
+		if (m_time_of_day > 0.5)
+			pointcolor_blend = 1 - pointcolor_blend;
+
+		// horizon colors of sun and moon
+		f32 pointcolor_light = rangelim(m_time_brightness * 3, 0.2, 1);
+		video::SColorf pointcolor_sun_f(1, 1, 1, 1);
+		pointcolor_sun_f.r = pointcolor_light * 1;
+		pointcolor_sun_f.b = pointcolor_light * (0.25 + (rangelim(m_time_brightness, 0.25, 0.75) - 0.25) * 2 * 0.75);
+		pointcolor_sun_f.g = pointcolor_light * (pointcolor_sun_f.b * 0.375 + (rangelim(m_time_brightness, 0.05, 0.15) - 0.05) * 10 * 0.625);
+		video::SColorf pointcolor_moon_f(0.55 * pointcolor_light, 0.65 * pointcolor_light, 0.75 * pointcolor_light, 1);
+		video::SColor pointcolor_sun = pointcolor_sun_f.toSColor();
+		video::SColor pointcolor_moon = pointcolor_moon_f.toSColor();
+		// calculate the blend color
+		pointcolor.setRed(pointcolor_moon.getRed() * (1 - pointcolor_blend) + pointcolor_sun.getRed() * pointcolor_blend);
+		pointcolor.setGreen(pointcolor_moon.getGreen() * (1 - pointcolor_blend) + pointcolor_sun.getGreen() * pointcolor_blend);
+		pointcolor.setBlue(pointcolor_moon.getBlue() * (1 - pointcolor_blend) + pointcolor_sun.getBlue() * pointcolor_blend);
+	}
+
 	video::SColor bgcolor_bright = m_bgcolor_bright_f.toSColor();
 	m_bgcolor = video::SColor(
-			255,
-			bgcolor_bright.getRed() * m_brightness,
-			bgcolor_bright.getGreen() * m_brightness,
-			bgcolor_bright.getBlue() * m_brightness);
+		255,
+		bgcolor_bright.getRed() * m_brightness * (1 - m_horizon_blend() * 0.5) + pointcolor.getRed() * (m_horizon_blend() * 0.5),
+		bgcolor_bright.getGreen() * m_brightness * (1 - m_horizon_blend() * 0.5) + pointcolor.getGreen() * (m_horizon_blend() * 0.5),
+		bgcolor_bright.getBlue() * m_brightness * (1 - m_horizon_blend() * 0.5) + pointcolor.getBlue() * (m_horizon_blend() * 0.5));
 	
 	video::SColor skycolor_bright = m_skycolor_bright_f.toSColor();
 	m_skycolor = video::SColor(
-			255,
-			skycolor_bright.getRed() * m_brightness,
-			skycolor_bright.getGreen() * m_brightness,
-			skycolor_bright.getBlue() * m_brightness);
-	
+		255,
+		skycolor_bright.getRed() * m_brightness,
+		skycolor_bright.getGreen() * m_brightness,
+		skycolor_bright.getBlue() * m_brightness);
+
 	float cloud_direct_brightness = 0;
 	if(sunlight_seen){
-		cloud_direct_brightness = time_brightness;
-		if(time_brightness >= 0.2 && time_brightness < 0.7)
-				cloud_direct_brightness *= 1.3;
+		cloud_direct_brightness = MYMIN(m_horizon_blend() * 0.15 + m_time_brightness, 1);
 	} else {
 		cloud_direct_brightness = direct_brightness;
 	}
 	m_cloud_brightness = m_cloud_brightness * 0.95 +
 			cloud_direct_brightness * (1.0 - 0.95);
 	m_cloudcolor_f = video::SColorf(
-			m_cloudcolor_bright_f.getRed() * m_cloud_brightness,
-			m_cloudcolor_bright_f.getGreen() * m_cloud_brightness,
-			m_cloudcolor_bright_f.getBlue() * m_cloud_brightness,
+			m_cloudcolor_bright_f.getRed() * m_cloud_brightness * (1 - m_horizon_blend() * 0.75) + (f32)pointcolor.getRed() / 255 * (m_horizon_blend() * 0.25),
+			m_cloudcolor_bright_f.getGreen() * m_cloud_brightness * (1 - m_horizon_blend() * 0.75) + (f32)pointcolor.getGreen() / 255 * (m_horizon_blend() * 0.25),
+			m_cloudcolor_bright_f.getBlue() * m_cloud_brightness * (1 - m_horizon_blend() * 0.75) + (f32)pointcolor.getBlue() / 255 * (m_horizon_blend() * 0.25),
 			1.0);
 
 }
